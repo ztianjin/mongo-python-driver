@@ -62,18 +62,25 @@ def __pack_message(operation, data):
 def insert(collection_name, docs, check_keys, safe, last_error_args):
     """Get an **insert** message.
     """
+    max_doc_size = 0
     data = __ZERO
     data += bson._make_c_string(collection_name)
-    bson_data = "".join([bson.BSON.encode(doc, check_keys) for doc in docs])
+    bson_data = ""
+    for doc in docs:
+        encoded = bson.BSON.encode(doc, check_keys)
+        if len(encoded) > max_doc_size:
+            max_doc_size = len(encoded)
+        bson_data += encoded
     if not bson_data:
         raise InvalidOperation("cannot do an empty bulk insert")
     data += bson_data
     if safe:
         (_, insert_message) = __pack_message(2002, data)
         (request_id, error_message) = __last_error(last_error_args)
-        return (request_id, insert_message + error_message)
+        return (max_doc_size, request_id, insert_message + error_message)
     else:
-        return __pack_message(2002, data)
+        (request_id, insert_message) = __pack_message(2002, data)
+        return (max_doc_size, request_id, insert_message)
 if _use_c:
     insert = _cbson._insert_message
 
@@ -91,13 +98,15 @@ def update(collection_name, upsert, multi, spec, doc, safe, last_error_args):
     data += bson._make_c_string(collection_name)
     data += struct.pack("<i", options)
     data += bson.BSON.encode(spec)
-    data += bson.BSON.encode(doc)
+    encoded = bson.BSON.encode(doc)
+    data += encoded
     if safe:
         (_, update_message) = __pack_message(2001, data)
         (request_id, error_message) = __last_error(last_error_args)
-        return (request_id, update_message + error_message)
+        return (len(encoded), request_id, update_message + error_message)
     else:
-        return __pack_message(2001, data)
+        (request_id, update_message) = __pack_message(2001, data)
+        return (len(encoded), request_id, update_message)
 if _use_c:
     update = _cbson._update_message
 
